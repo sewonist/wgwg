@@ -57,16 +57,56 @@ export default function SessionVisualizePage({ params }: PageProps) {
                 if (response.ok) {
                     const data = await response.json();
                     if (data.ontology && (data.ontology.nodes.length > 0 || data.ontology.links.length > 0)) {
-                        const loadedNodes = data.ontology.nodes.map((n: GraphNode) => ({
-                            ...n,
-                            val: n.val || 5,
-                            color: n.color || GetNodeColor(n.type)
-                        }));
-                        const loadedLinks = data.ontology.links.map((l: GraphLink) => ({
-                            ...l,
-                            value: l.value || 1
-                        }));
-                        setGraphData({ nodes: loadedNodes, links: loadedLinks });
+                        // Apply same merge logic as UpdateGraph
+                        const mergedNodes: GraphNode[] = [];
+                        const mergedLinks: GraphLink[] = [];
+                        const idMapping: { [key: string]: string } = {};
+                        const normalize = (str: string) => str.toLowerCase().replace(/\s+/g, '');
+
+                        // Merge nodes (same logic as UpdateGraph)
+                        data.ontology.nodes.forEach((n: GraphNode) => {
+                            const existingNode = mergedNodes.find(node => normalize(node.name) === normalize(n.name));
+                            if (existingNode) {
+                                existingNode.val += 1;
+                                idMapping[n.id] = existingNode.id;
+                            } else {
+                                const newNode: GraphNode = {
+                                    ...n,
+                                    val: n.val || 5,
+                                    color: n.color || GetNodeColor(n.type)
+                                };
+                                mergedNodes.push(newNode);
+                                idMapping[n.id] = n.id;
+                            }
+                        });
+
+                        // Merge links (same logic as UpdateGraph)
+                        data.ontology.links.forEach((l: GraphLink) => {
+                            const sourceId = idMapping[l.source as string] !== undefined ? idMapping[l.source as string] : l.source as string;
+                            const targetId = idMapping[l.target as string] !== undefined ? idMapping[l.target as string] : l.target as string;
+
+                            const sourceExists = mergedNodes.some(n => n.id === sourceId);
+                            const targetExists = mergedNodes.some(n => n.id === targetId);
+
+                            if (!sourceExists || !targetExists) {
+                                return;
+                            }
+
+                            const existingLink = mergedLinks.find(link =>
+                                (link.source === sourceId && link.target === targetId)
+                            );
+
+                            if (!existingLink) {
+                                mergedLinks.push({
+                                    ...l,
+                                    source: sourceId,
+                                    target: targetId,
+                                    value: l.value || 1
+                                });
+                            }
+                        });
+
+                        setGraphData({ nodes: mergedNodes, links: mergedLinks });
                     }
                 }
             } catch (error) {
@@ -318,7 +358,8 @@ export default function SessionVisualizePage({ params }: PageProps) {
 
                 nodeCanvasObject={(node, ctx, globalScale) => {
                     const label = node.name;
-                    const fontSize = 12 / globalScale;
+                    // Scale font with zoom, but clamp to readable range
+                    const fontSize = Math.max(2 / globalScale, Math.min(2, 6 * globalScale));
 
                     const n = node as GraphNode;
                     const r = Math.sqrt(Math.max(0, n.val || 1)) * 2;
@@ -358,7 +399,8 @@ export default function SessionVisualizePage({ params }: PageProps) {
 
                     const textPos = { x: start.x! + (end.x! - start.x!) / 2, y: start.y! + (end.y! - start.y!) / 2 };
 
-                    const fontSize = 10 / globalScale;
+                    // Scale font with zoom, but clamp to readable range
+                    const fontSize = Math.max(2 / globalScale, Math.min(2, 5 * globalScale));
                     ctx.font = `${fontSize}px Sans-Serif`;
                     const textWidth = ctx.measureText(l.label).width;
                     const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
