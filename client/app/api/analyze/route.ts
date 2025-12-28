@@ -1,20 +1,13 @@
 import { openai } from '@ai-sdk/openai';
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { redis, checkRedisAvailable } from '@/lib/redis';
+import { SessionRouter } from '@/lib/session-router';
 
 export async function POST(req: Request) {
-    const { text } = await req.json();
+    const { text, sessionId } = await req.json();
 
-    // Fetch existing nodes from Redis to provide context
-    let existingNodes: string[] = [];
-    if (checkRedisAvailable()) {
-        try {
-            existingNodes = await redis.smembers('ontology:nodes');
-        } catch (error) {
-            console.error('Redis connection failed while fetching nodes:', error);
-        }
-    }
+    // Fetch existing nodes from session or global context
+    const existingNodes = await SessionRouter.GetExistingNodeNames(sessionId);
 
     const existingNodesContext = existingNodes.length > 0
         ? `\n\nExisting ontology nodes (reuse these names if applicable): ${existingNodes.join(', ')}`
@@ -36,10 +29,10 @@ export async function POST(req: Request) {
                 description: z.string().optional(),
             })),
         }),
-        prompt: `Analyze the following discussion content and extract an ontology graph. 
+        prompt: `Analyze the following discussion content and extract an ontology graph.
     Identify key concepts, entities, actions, or emotions as nodes.
     Identify relationships between them as links with descriptive labels.
-    
+
     Reuse existing node names where appropriate. Only introduce new node names if the concept is distinctly different from existing ones.
 
     Content:
@@ -47,15 +40,12 @@ export async function POST(req: Request) {
     `,
     });
 
-    // Save new nodes to Redis
-    // We can just add all of them; Redis sets handle uniqueness automatically.
-    if (object.nodes.length > 0 && checkRedisAvailable()) {
-        try {
-            const nodeNames = object.nodes.map(n => n.name);
-            await redis.sadd('ontology:nodes', ...nodeNames);
-        } catch (error) {
-            console.error('Redis connection failed while saving nodes:', error);
-        }
+    // Save ontology to session if sessionId provided
+    if (sessionId && (object.nodes.length > 0 || object.links.length > 0)) {
+        await SessionRouter.AppendOntology(sessionId, {
+            nodes: object.nodes,
+            links: object.links,
+        });
     }
 
     return Response.json(object);
