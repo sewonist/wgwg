@@ -100,7 +100,7 @@ members = ["FRITZ", "BOB", "DONNA", "BEN", "JOHN", "CITIZEN"]
 count = 0 
 select = 0 #selected topic
 feedback_count = 0  
-feedback_interval = (len(members) - 1)
+feedback_interval = 2
 interval = 30 #topic interval
 
 # debate_length = 5 #dabate length
@@ -422,7 +422,7 @@ def agent_critic(state):
    
     # print(response)
     # print("---------------------TEST---------------------")
-    name = members[3]
+    name = members[0]
     # return {"messages": [AIMessage(content=response.content)], "topic": topic}
     return {"messages": [AIMessage(content=response.content, name = name )], "feedback":response.content}
 
@@ -439,7 +439,7 @@ def agent_01_(state):
    
     # response = agent_01.invoke(state)
     response = agent_01.invoke({"messages":(messages), "feedback": feedback})
-    response = simplifier.invoke({"words": str(response.content), "participant":members[0]})
+    # response = simplifier.invoke({"words": str(response.content), "participant":members[0]})
 
     # next = response.next
     # print(response)
@@ -491,7 +491,7 @@ def agent_03_(state):
     # response = agent_01.invoke({"topic":topic, "message":message})
 
     # response = agent_03.invoke(state)
-    response = agent_03.invoke({"messages":(messages[-40:])})
+    response = agent_03.invoke({"messages":(messages)})
 
     # next = response.next
     # print(response)
@@ -520,7 +520,7 @@ def agent_04_(state):
     # response = agent_01.invoke({"topic":topic, "message":message})
 
     # response = agent_04.invoke(state)
-    response = agent_04.invoke({"messages":(messages[-40:])})
+    response = agent_04.invoke({"messages":(messages)})
 
     # next = response.next
     # print(response)
@@ -549,7 +549,7 @@ def agent_05_(state):
     # response = agent_01.invoke({"topic":topic, "message":message})
 
     # response = agent_05.invoke(state)
-    response = agent_05.invoke({"messages":(messages[-40:])})
+    response = agent_05.invoke({"messages":(messages)})
 
     # next = response.next
     # print(response)
@@ -599,20 +599,19 @@ def agent_06_(state):
 
 
 def user_participate(state):
-    print(">> user comment" + '\n')
+    global feedback_count
+    print(">> user comment is now being applied" + '\n')
     topic = state["topic"]
     user_comment = state.get("user_comment", "")
 
-    # if user_feedback.lower() == "ok":
-    #     print(">> 피드백없이 다음 단계로 넘어갑니다.")
-    #     return {"proceed": True, "user_feedback": ""}
-    # else: 
+    name = "USER_"
 
-    print(">> 사회자 에이전트에게 전달합니다.")
-    return {"messages": [AIMessage(content= "[USER] " + user_comment, name = "USER")], "topic": topic}
+    feedback_count = feedback_count + 1
+    print(">> feedback_count: {}".format(feedback_count))
 
-    return {"proceed": False, "user_comment": user_comment }
-
+    # return {"proceed": False, "user_comment": user_comment }
+    return {"messages": [AIMessage(content= "USER: " + user_comment, name = name)], "topic": topic}
+    
 
 #EDGE
 def should_continue(state):
@@ -641,7 +640,6 @@ def feedback(state):
     global feedback_count
     messages = state["messages"]
 
-    print(">> message length: {}".format(len(messages)))
     print(">> feedback count: {}".format(feedback_count))
 
     # if len(messages) > 5:
@@ -651,21 +649,18 @@ def feedback(state):
         return "FEEDBACK"
     
     #user feedback을 위한
-    elif feedback_count == 100:
-        print(">> user comment")
-        # feedback_count = 0
-        return "user" 
-    
     else:
-        print(">> goes to host")
-        return "host"
-
+        print(">> next")
+        # feedback_count = 0
+        return "next" 
+    
+    
 #MEMORY
 memory = MemorySaver()
 workflow = StateGraph(GraphState)
 
 #NODE
-workflow.add_node("host", agent_host)  #agent_host
+# workflow.add_node("host", agent_host)  #agent_host
 workflow.add_node(members[0], agent_01_)  #agent_01
 workflow.add_node(members[1], agent_02_)  #agent_02
 workflow.add_node(members[2], agent_03_)  #agent_03
@@ -673,7 +668,7 @@ workflow.add_node(members[3], agent_04_)  #agent_04
 workflow.add_node(members[4], agent_05_)  #agent_04
 workflow.add_node(members[5], agent_06_)  #agent_06
 workflow.add_node("critic", agent_critic) #agent_critic
-workflow.add_node("user", user_participate) #user comment
+workflow.add_node("USER", user_participate) #user comment
 workflow.add_node("transltor", agent_translator) #agent_translator
 workflow.add_node("punchliner", agent_punchliner) #agent_punchliner
 workflow.add_node("simplifier", agent_simplifier) #agent_punchliner
@@ -688,33 +683,29 @@ workflow.add_node("simplifier", agent_simplifier) #agent_punchliner
 #     conditional_map   
 # )
 
-# workflow.add_conditional_edges(
-#     "transltor",
-#     feedback,
-#     {
-#         "FEEDBACK": "critic",
-#         "user": "user"
-#     },
-# )
 
-workflow.add_edge(START, members[5])
-# workflow.add_edge(members[0], "simplifier")
-workflow.add_edge(members[5], members[1])
-# workflow.add_edge("simplifier", members[1])
 
-workflow.add_edge(members[1], "critic")
-# workflow.add_edge("punchliner", "critic")
-# workflow.add_edge("critic", members[0])
+workflow.add_edge(START, members[0])
+workflow.add_edge(members[0], members[1])
+workflow.add_edge(members[1], "USER")
+
+workflow.add_conditional_edges(
+    "USER",
+    feedback,
+    {
+        "FEEDBACK": "critic",
+        "next": members[3]
+    },
+)
+
+workflow.add_edge("critic", members[3])
+workflow.add_edge(members[3], members[0])
 
 # workflow.add_edge(members[1], members[0])
-
-
 # workflow.add_edge(members[1], members[2])
 # workflow.add_edge(members[2], members[3])
 # workflow.add_edge(members[3], members[4])
 # workflow.add_edge(members[4], members[0])
-
-
 
 
 # 컴파일된 그래프 반환
@@ -722,4 +713,4 @@ def get_graph():
     # return graph_builder.compile(
     #checkpointer=memory,
     #interrupt_before=["user"]) 
-    return workflow.compile(checkpointer=memory)
+    return workflow.compile(checkpointer=memory, interrupt_before=["USER"])

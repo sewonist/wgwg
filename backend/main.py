@@ -33,11 +33,9 @@ config = RunnableConfig(configurable=configurable, recursion_limit=200)
 typing_queue: asyncio.Queue = asyncio.Queue()
 send_lock = asyncio.Lock()
 
-# FOR TEST
 morse_test = False
 morse_idx = 0
-
-
+user_comment = False
 current_topic = None
 
 async def typing_worker():
@@ -141,9 +139,9 @@ async def typing_effect(full_message: str, agent_type: str):
 
 async def handle_chat_message(data, websocket: WebSocket):
     global morse_idx
-
+    global user_comment
+    
     try:
-        user_comment = False
         key = "Bot"
         message = ""  
         # topic = get_topic(0)
@@ -161,8 +159,7 @@ async def handle_chat_message(data, websocket: WebSocket):
         user_input = data.get("message", "")
 
         response_message = ""
-        # partial_message = ""
-
+       
         #user comment를 위한 로직
         if  user_comment is False: #처음
             print(">> 토론 시작")
@@ -176,7 +173,7 @@ async def handle_chat_message(data, websocket: WebSocket):
             "debate_end":False } 
 
         else:   #유저 코멘트 
-            print(">> 말씀하신 내용을 사회자에게 전달합니다. {}".format(user_input))
+            print(">> 말씀하신 내용을 전달합니다. {}".format(user_input) + '\n')
 
             graph.update_state(
                         config,
@@ -186,13 +183,11 @@ async def handle_chat_message(data, websocket: WebSocket):
             )
 
             inputs = None
-            user_comment = False
-        
+    
         next_node = None
 
         async for output in graph.astream(inputs, config):
         # for output in graph.stream(inputs, config):    
-            ## user feedback을 위해 추가 중
             snapshot = graph.get_state(config)
             next_node = snapshot.next
             
